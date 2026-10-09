@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure RAG Chatbot</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f5f5; height: 100vh; overflow: hidden; }
+        .container { display: flex; height: 100vh; }
+        .sidebar { width: 280px; background: #2d3748; color: white; padding: 1rem; display: flex; flex-direction: column; }
+        .sidebar h2 { font-size: 1.1rem; margin-bottom: 1.5rem; }
+        .user-selector { margin-bottom: 1rem; }
+        .user-selector label { display: block; font-size: 0.8rem; color: #9ca3af; margin-bottom: 0.5rem; }
+        .user-select { width: 100%; padding: 0.5rem; border-radius: 6px; border: 1px solid #4a5568; background: #1a202c; color: white; font-size: 0.9rem; }
+        .user-select:focus { outline: none; border-color: #4299e1; }
+        .access-badge { margin: 1rem 0; padding: 0.5rem; background: #4a5568; border-radius: 6px; font-size: 0.85rem; }
+        .access-badge span { color: #93c5fd; }
+        .sidebar-button { width: 100%; padding: 0.5rem; background: #4299e1; color: white; border: none; border-radius: 6px; font-size: 0.85rem; cursor: pointer; margin-bottom: 1rem; }
+        .sidebar-button:hover { background: #3182ce; }
+        .sidebar-link { color: #93c5fd; text-decoration: none; font-size: 0.85rem; padding: 0.5rem; display: block; text-align: center; border: 1px solid #4a5568; border-radius: 6px; }
+        .sidebar-link:hover { background: #3a4a5c; }
+        .main { flex: 1; display: flex; flex-direction: column; background: white; }
+        .chat-header { padding: 1rem 1.5rem; border-bottom: 1px solid #e2e8f0; background: #f8fafc; }
+        .chat-header h1 { font-size: 1.2rem; color: #2d3748; }
+        .chat-window { flex: 1; overflow-y: auto; padding: 1rem 1.5rem; }
+        .message { margin-bottom: 1rem; max-width: 80%; }
+        .message.user { margin-left: auto; text-align: right; }
+        .message.bot { margin-right: auto; }
+        .bubble { display: inline-block; padding: 0.75rem 1rem; border-radius: 18px; font-size: 0.9rem; line-height: 1.5; }
+        .bubble.user { background: #4299e1; color: white; border-radius: 18px 4px 18px 18px; }
+        .bubble.bot { background: #f1f5f9; color: #2d3748; border-radius: 4px 18px 18px 18px; }
+        .timestamp { font-size: 0.7rem; opacity: 0.6; margin-top: 0.25rem; display: block; }
+        .warning-banner { background: #fef3c7; border: 1px solid #fbbf24; color: #92400e; padding: 0.5rem; border-radius: 4px; margin-top: 0.5rem; font-size: 0.85rem; }
+        .sources { margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.25rem; }
+        .source-badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 12px; font-size: 0.75rem; font-weight: 500; }
+        .source-badge.pdf { background: #dbeafe; color: #1e40af; }
+        .source-badge.png { background: #dcfce7; color: #166534; }
+        .source-badge.sqlite { background: #ffedd5; color: #9a3412; }
+        .input-bar { display: flex; gap: 0.5rem; padding: 1rem 1.5rem; border-top: 1px solid #e2e8f0; background: #f8fafc; }
+        .input-bar input { flex: 1; padding: 0.5rem 1rem; border: 1px solid #cbd5e1; border-radius: 20px; font-size: 0.9rem; outline: none; }
+        .input-bar input:focus { border-color: #4299e1; }
+        .send-btn { padding: 0.5rem 1.5rem; background: #4299e1; color: white; border: none; border-radius: 20px; font-size: 0.9rem; cursor: pointer; }
+        .send-btn:hover { background: #3182ce; }
+        .send-btn:disabled { background: #93c5fd; cursor: not-allowed; }
+        .typing-dots { display: inline-flex; gap: 2px; }
+        .typing-dots span { width: 4px; height: 4px; background: #94a3b8; border-radius: 50%; display: inline-block; animation: bounce 1.4s ease-in-out infinite both; }
+        .typing-dots span:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dots span:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes bounce { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
+        .loading-msg { padding: 0.75rem 1rem; border-radius: 4px 18px 18px 18px; background: #f1f5f9; color: #2d3748; display: inline-block; margin-bottom: 1rem; }
+        @media (max-width: 768px) { .sidebar { width: 240px; } .message { max-width: 90%; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <h2>Secure RAG Bot</h2>
+            <div class="user-selector">
+                <label for="userSelect">Select User</label>
+                <select id="userSelect">
+                    {% for user_id, info in users.items() %}
+                    <option value="{{ user_id }}">{{ info.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="access-badge">
+                <span>Role:</span> <span id="userRole">hr</span>
+            </div>
+            <button class="sidebar-button" id="clearBtn">Clear Chat</button>
+            <a href="/logs-page" class="sidebar-link">View Logs</a>
+        </div>
+        <div class="main">
+            <div class="chat-header">
+                <h1 id="chatTitle">Secure Enterprise Assistant</h1>
+            </div>
+            <div class="chat-window" id="chatWindow">
+                <div class="message bot">
+                    <div class="bubble bot">
+                        Hello! I am your secure enterprise assistant. Select a user and ask me questions about your documents or employee database.
+                    </div>
+                    <span class="timestamp" id="welcomeTime"></span>
+                </div>
+            </div>
+            <div class="input-bar">
+                <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off">
+                <button class="send-btn" id="sendBtn" disabled>Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const users = {
+            {% for user_id, info in users.items() %}
+            "{{ user_id }}": { role: "{{ info.role }}", name: "{{ info.name }}" },
+            {% endfor %}
+        };
+
+        let currentUser = "alice";
+        let isWaiting = false;
+
+        function updateTimestamp(el, date) {
+            el.textContent = date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        }
+
+        function updateWelcomeTime() {
+            updateTimestamp(document.getElementById("welcomeTime"), new Date());
+        }
+
+        function updateUserBadge() {
+            const role = users[currentUser].role;
+            document.getElementById("userRole").textContent = role;
+            document.getElementById("chatTitle").textContent = `Chat as ${users[currentUser].name}`;
+        }
+
+        document.getElementById("userSelect").addEventListener("change", function() {
+            currentUser = this.value;
+            updateUserBadge();
+            document.getElementById("chatWindow").innerHTML =
+                '<div class="message bot"><div class="bubble bot">Hello! I am your secure enterprise assistant. How can I help you today?</div>' +
+                '<span class="timestamp">' + new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) + '</span></div>';
+        });
+
+        document.getElementById("sendBtn").disabled = false;
+
+        async function sendMessage() {
+            if (isWaiting) return;
+            const input = document.getElementById("messageInput");
+            const message = input.value.trim();
+            if (!message) return;
+
+            isWaiting = true;
+            document.getElementById("sendBtn").disabled = true;
+            input.disabled = true;
+
+            const chatWindow = document.getElementById("chatWindow");
+            const now = new Date();
+
+            const userDiv = document.createElement("div");
+            userDiv.className = "message user";
+            userDiv.innerHTML = '<div class="bubble user">' + escapeHtml(message) + '</div>' +
+                '<span class="timestamp">' + now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) + '</span>';
+            chatWindow.appendChild(userDiv);
+
+            const loadingDiv = document.createElement("div");
+            loadingDiv.className = "message bot";
+            loadingDiv.innerHTML = '<div class="loading-msg"><span class="typing-dots"><span></span><span></span><span></span></span> Thinking...</div>';
+            chatWindow.appendChild(loadingDiv);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+
+            try {
+                const response = await fetch("/chat", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({user: currentUser, message: message})
+                });
+                const data = await response.json();
+
+                loadingDiv.remove();
+
+                const botDiv = document.createElement("div");
+                botDiv.className = "message bot";
+                let sourcesHtml = "";
+                if (data.sources && data.sources.length > 0) {
+                    const badges = data.sources.map(s => {
+                        let cls = "pdf";
+                        if (s.includes(".png") || s.includes("png")) cls = "png";
+                        if (s.includes("sqlite") || s.includes("employee_db")) cls = "sqlite";
+                        return '<span class="source-badge ' + cls + '">' + escapeHtml(s) + '</span>';
+                    });
+                    sourcesHtml = '<div class="sources">' + badges.join("") + '</div>';
+                }
+
+                const timeStr = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+                let warningHtml = "";
+                if (data.warning) {
+                    warningHtml = '<div class="warning-banner">⚠ ' + escapeHtml(data.warning) + '</div>';
+                }
+
+                botDiv.innerHTML = '<div class="bubble bot">' + escapeHtml(data.answer) + warningHtml + '</div>' +
+                    sourcesHtml + '<span class="timestamp">' + timeStr + '</span>';
+                chatWindow.appendChild(botDiv);
+            } catch (err) {
+                loadingDiv.remove();
+                const botDiv = document.createElement("div");
+                botDiv.className = "message bot";
+                const timeStr = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+                botDiv.innerHTML = '<div class="bubble bot">Error: ' + escapeHtml(err.message) + '</div>' +
+                    '<span class="timestamp">' + timeStr + '</span>';
+                chatWindow.appendChild(botDiv);
+            }
+
+            input.value = "";
+            input.disabled = false;
+            document.getElementById("sendBtn").disabled = false;
+            isWaiting = false;
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement("div");
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        document.getElementById("sendBtn").addEventListener("click", sendMessage);
+        document.getElementById("messageInput").addEventListener("keypress", function(e) {
+            if (e.key === "Enter") sendMessage();
+        });
+
+        document.getElementById("clearBtn").addEventListener("click", async function() {
+            await fetch("/clear", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({user: currentUser})
+            });
+            document.getElementById("chatWindow").innerHTML =
+                '<div class="message bot"><div class="bubble bot">Chat cleared. How can I help you?</div>' +
+                '<span class="timestamp">' + new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) + '</span></div>';
+        });
+
+        updateUserBadge();
+        updateWelcomeTime();
+        setInterval(updateWelcomeTime, 60000);
+    </script>
+</body>
+</html>
